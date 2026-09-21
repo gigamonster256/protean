@@ -11,7 +11,7 @@ jobs:
         uses: cachix/install-nix-action@v31
         with:
           # Pin to Nix 2.34 to match the local machine (see materialize-info).
-          install_url: https://releases.nixos.org/nix/nix-2.34.0/install
+          install_url: https://releases.nixos.org/nix/nix-2.34.8/install
           github_access_token: ${{ github.token }}
 
       # Single source of truth: nix build runs Hardcaml -> Verilog -> cocotb
