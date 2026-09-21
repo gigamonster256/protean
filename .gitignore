@@ -11,3 +11,19 @@ test/sim_build
 test/__pycache__/
 test/results.xml
 test/gate_level_netlist.v
+# nix dev shell (flake.nix)
+tt/
+pdk/
+.tt-bin/
+.direnv/
+.envrc
+# nix is the source of truth for project metadata - materialize with:
+# nix run .#materialize-info (CI does this via .github/actions/materialize-info)
+info.yaml
+# Hardcaml: OCaml is the source of truth, Verilog is generated at build time
+gen/
+# build copy of gen/project.v for the TT harden flow (see hw/README.md)
+src/project.v
+_build/
+.merlin
+*.install

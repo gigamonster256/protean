@@ -13,5 +13,9 @@ jobs:
         with:
           submodules: recursive
 
+      # info.yaml is gitignored - materialize it from info.nix first
+      - name: Materialize info.yaml
+        uses: ./.github/actions/materialize-info
+
       - name: Build docs
         uses: TinyTapeout/tt-gds-action/docs@ihp-cmos5l

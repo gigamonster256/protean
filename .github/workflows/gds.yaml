@@ -13,6 +13,20 @@ jobs:
         with:
           submodules: recursive
 
+      # info.yaml is gitignored - materialize it from info.nix first (installs nix)
+      - name: Materialize info.yaml
+        uses: ./.github/actions/materialize-info
+
+      # Design source is Hardcaml (hw/); generate src/project.v for hardening
+      # via the same nix closure used locally (`nix build .#verilog`).
+      - name: Generate Verilog from Hardcaml
+        shell: bash
+        run: |
+          nix build .#verilog --out-link verilog-result
+          # TT hardening reads sources from src/ - copy the generated file over
+          mkdir -p src
+          cp verilog-result/project.v src/project.v
+
       - name: Build GDS
         uses: TinyTapeout/tt-gds-action@ihp-cmos5l
         with:

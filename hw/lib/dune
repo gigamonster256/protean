@@ -1,0 +1,6 @@
+(library
+ (name tt_top)
+ (libraries hardcaml base stdio)
+ (preprocess
+  (pps ppx_hardcaml ppx_expect))
+ (inline_tests))

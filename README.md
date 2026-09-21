@@ -1,42 +1,104 @@
-![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
+# Protean — Tiny Tapeout Programmable Protocol Emulator (Hardcaml + Nix)
 
-# Tiny Tapeout Verilog Project Template
+A [Tiny Tapeout](https://tinytapeout.com) ASIC project whose design is written in
+[Hardcaml](https://github.com/janestreet/hardcaml) (OCaml) rather than raw
+Verilog. Nix is the single source of truth for the whole flow: it fetches the
+OCaml toolchain via [opam-nix](https://github.com/tweag/opam-nix), the Python +
+EDA tooling via [librelane](https://github.com/librelane/librelane)/nixpkgs, and
+drives Hardcaml → Verilog → RTL sim → LibreLane harden → GDS.
 
-- [Read the documentation for project](docs/info.md)
+| | |
+|---|---|
+| GDS | ![gds](https://github.com/gigamonster256/protean/actions/workflows/gds.yaml/badge.svg) |
+| test | ![test](https://github.com/gigamonster256/protean/actions/workflows/test.yaml/badge.svg) |
+| docs | ![docs](https://github.com/gigamonster256/protean/actions/workflows/docs.yaml/badge.svg) |
+| fpga | ![fpga](https://github.com/gigamonster256/protean/actions/workflows/fpga.yaml/badge.svg) |
 
-## What is Tiny Tapeout?
+## Local development with Nix (no Docker)
 
-Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.
+Everything runs locally with the tools provided by `nix develop` — LibreLane and
+the other EDA tools come from nix, so there is no Docker requirement for
+hardening.
 
-To learn more and get started, visit https://tinytapeout.com.
+```sh
+nix develop   # one-time: builds the OCaml + Python + EDA closure
+```
 
-## Set up your Verilog project
+The shell drops you into an environment with:
 
-1. Add your Verilog files to the `src` folder.
-2. Edit the [info.yaml](info.yaml) and update information about your project, paying special attention to the `source_files` and `top_module` properties. If you are upgrading an existing Tiny Tapeout project, check out our [online info.yaml migration tool](https://tinytapeout.github.io/tt-yaml-upgrade-tool/).
-3. Edit [docs/info.md](docs/info.md) and add a description of your project.
-4. Adapt the testbench to your design. See [test/README.md](test/README.md) for more information.
+- `dune` + Hardcaml (OCaml toolchain, via opam-nix)
+- the `tt_tool.py` Python stack (`librelane`, cocotb, klayout, …)
+- LibreLane and the EDA tools (`yosys`, `openroad`, `opensta`, `magic`, `netgen`, `iverilog`)
+- a writable, magic-patched PDK under `./pdk`
+- `info.yaml` materialized from `info.nix`, `./tt` copied from the pinned
+  `tt-support-tools`, and `src/project.v` regenerated from `hw/`
 
-The GitHub action will automatically build the ASIC files using [LibreLane](https://www.zerotoasiccourse.com/terminology/librelane/).
+### The full e2e flow
 
-## Enable GitHub actions to build the results page
+```sh
+# 1. Hardcaml -> Verilog (also run automatically by the shell hook)
+dune runtest                                            # fast OCaml simulation
+dune exec ./hw/bin/gen.exe > gen/project.v && cp gen/project.v src/project.v
 
-- [Enabling GitHub Pages](https://tinytapeout.com/faq/#my-github-action-is-failing-on-the-pages-part)
+# 2. RTL verification (cocotb + iverilog)
+make -C test clean && make -C test
+
+# 3. Harden -> GDS (LibreLane, no Docker)
+./tt/tt_tool.py --create-user-config --ihp --no-docker
+./tt/tt_tool.py --harden --ihp --no-docker
+
+# 4. Build the TT submission package (GDS/OAS/LEF/SPEF/netlist/stats)
+./tt/tt_tool.py --create-tt-submission --ihp
+
+# 5. Gate-level verification
+TOP=$(./tt/tt_tool.py --print-top-module --ihp)
+cp runs/wokwi/final/nl/$TOP.nl.v test/gate_level_netlist.v
+make -C test clean && GATES=yes make -C test
+
+# 6. View the result
+./tt/tt_tool.py --open-in-klayout --ihp --no-docker
+```
+
+### One-command equivalents
+
+```sh
+nix run .#rtl-test    # step 2
+nix run .#harden      # steps 3 + 4
+nix run .#gl-test     # step 5
+```
+
+The pure, sandboxed equivalents (what CI runs) are:
+
+```sh
+nix build .#verilog   # Hardcaml -> Verilog
+nix build .#rtl-test  # cocotb RTL sim
+nix build .#gds       # LibreLane harden -> GDS
+nix build .#gl-test   # gate-level sim
+nix build             # everything (default = .#design)
+```
+
+## Design source of truth
+
+- `hw/` — Hardcaml design (`lib/top.ml` defines the TT port interface; `bin/gen.ml` prints Verilog).
+- `info.nix` — project metadata (top module, source files, pinout). Regenerate the gitignored `info.yaml` with `nix run .#materialize-info`.
+- `dune-project` → `protean.opam` — OCaml deps, resolved by opam-nix against the opam-repository pinned in `flake.lock`.
+- `src/config.json` — the committed TT/LibreLane config defaults (overridden per-run by the generated `src/user_config.json`).
+
+## CI
+
+GitHub Actions reuse the same nix closure as local development:
+
+- `test.yaml` — `nix build .#rtl-test` (Hardcaml → Verilog → cocotb RTL sim).
+- `gds.yaml` — `nix build .#verilog` to produce `src/project.v`, then the
+  [tt-gds-action](https://github.com/TinyTapeout/tt-gds-action) for the official
+  submission artifacts (GDS, precheck, gate-level test, viewer).
+- `docs.yaml` / `fpga.yaml` — materialize `info.yaml` via nix, then the
+  tt-gds-action docs/fpga steps.
 
 ## Resources
 
-- [FAQ](https://tinytapeout.com/faq/)
-- [Digital design lessons](https://tinytapeout.com/digital_design/)
-- [Learn how semiconductors work](https://tinytapeout.com/siliwiz/)
-- [Join the community](https://tinytapeout.com/discord)
-- [Build your design locally](https://www.tinytapeout.com/guides/local-hardening/)
-
-## What next?
-
-- [Submit your design to the next shuttle](https://app.tinytapeout.com/).
-- Edit [this README](README.md) and explain your design, how it works, and how to test it.
-- Share your project on your social network of choice:
-  - LinkedIn [#tinytapeout](https://www.linkedin.com/search/results/content/?keywords=%23tinytapeout) [@TinyTapeout](https://www.linkedin.com/company/100708654/)
-  - Mastodon [#tinytapeout](https://chaos.social/tags/tinytapeout) [@matthewvenn](https://chaos.social/@matthewvenn)
-  - X (formerly Twitter) [#tinytapeout](https://twitter.com/hashtag/tinytapeout) [@tinytapeout](https://twitter.com/tinytapeout)
-  - Bluesky [@tinytapeout.com](https://bsky.app/profile/tinytapeout.com)
+- [Tiny Tapeout docs](https://tinytapeout.com)
+- [Local hardening guide](https://www.tinytapeout.com/guides/local-hardening/)
+- [LibreLane](https://www.zerotoasiccourse.com/terminology/librelane/)
+- [Hardcaml](https://github.com/janestreet/hardcaml)
+- [opam-nix](https://github.com/tweag/opam-nix)

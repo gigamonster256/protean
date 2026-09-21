@@ -6,13 +6,16 @@ SIM ?= icarus
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
+# Hardcaml-generated RTL lives in ../gen (gitignored); regenerate with
+# `make generate` (needs the OCaml env, e.g. via `nix develop`).
+GEN_DIR = $(PWD)/../gen
 PROJECT_SOURCES = project.v
 
 ifneq ($(GATES),yes)
 
 # RTL simulation:
 SIM_BUILD				= sim_build/rtl
-VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES))
+VERILOG_SOURCES += $(addprefix $(GEN_DIR)/,$(PROJECT_SOURCES))
 
 else
 
@@ -41,3 +44,11 @@ COCOTB_TEST_MODULES = test
 
 # include cocotb's make rules to take care of the simulator setup
 include $(shell cocotb-config --makefiles)/Makefile.sim
+
+# RTL sources come from the Hardcaml generator - build them on demand.
+# (Kept after the include so cocotb's `sim` stays the default goal.)
+generate:
+	cd .. && mkdir -p gen && dune exec ./hw/bin/gen.exe > gen/project.v
+
+$(GEN_DIR)/project.v:
+	$(MAKE) generate
