@@ -6,9 +6,6 @@ runs:
     - name: Install nix
       uses: cachix/install-nix-action@v31
       with:
-        # Pin to Nix 2.34 to match the local machine: newer Nix (2.35) computes
-        # different NAR hashes for git inputs, breaking the flake.lock.
-        install_url: https://releases.nixos.org/nix/nix-2.34.8/install
         github_access_token: ${{ github.token }}
 
     - name: Materialize info.yaml from info.nix
